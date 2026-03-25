@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Main entry ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "MyApp"
+    },
+    {
+      "name": "InternalPayAbility_desc",
+      "value": "Internal payment ability"
+    },
+    {
+      "name": "InternalPayAbility_label",
+      "value": "Payment"
+    }
+  ]
+}
