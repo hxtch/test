@@ -1,0 +1,39 @@
+{
+  "ExportedComponentToSMS": {
+    "SliceMode": true,
+    "traceDepth": 10,
+    "desc": {
+      "name": "ExportedComponentToSMS",
+      "category": "ExportedComponentRisk",
+      "detail": "An exported component receives untrusted Intent input and forwards it to SmsManager.sendTextMessage, allowing a malicious app to send SMS messages using the victim app's SEND_SMS permission.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "ExportedCompos": true
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.content.Intent: android.os.Bundle getExtras()>",
+        "<android.content.Intent: android.net.Uri getData()>"
+      ]
+    },
+    "sink": {
+      "<android.telephony.SmsManager: void sendTextMessage(java.lang.String,java.lang.String,java.lang.String,android.app.PendingIntent,android.app.PendingIntent)>": {
+        "TaintCheck": ["p0", "p2"]
+      },
+      "<android.telephony.SmsManager: void sendMultipartTextMessage(java.lang.String,java.lang.String,java.util.ArrayList,java.util.ArrayList,java.util.ArrayList)>": {
+        "TaintCheck": ["p0", "p2"]
+      }
+    },
+    "sanitizer": {
+      "callerCheck": {
+        "<android.content.Context: int checkCallingPermission(java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        }
+      }
+    }
+  }
+}

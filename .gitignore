@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+!build/libs/*.jar
+
+# IDE
+.idea/
+*.iml
+
+# Test outputs
+out/
+test-apks/
+*.apk
+
+# OS
+.DS_Store
+
+# Android platform jars (large, can be downloaded)
+appshark/config/tools/platforms/

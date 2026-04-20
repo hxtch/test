@@ -1,0 +1,32 @@
+{
+  "WebViewUntrustedUrlLoad": {
+    "DirectMode": true,
+    "traceDepth": 10,
+    "desc": {
+      "name": "WebViewUntrustedUrlLoad",
+      "category": "WebViewRisk",
+      "detail": "Untrusted URL loaded into WebView",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.String getStringExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$WebView: void loadUrl(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$WebView: void loadData(java.lang.String,java.lang.String,java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

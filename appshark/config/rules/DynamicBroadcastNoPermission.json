@@ -1,0 +1,17 @@
+{
+  "DynamicBroadcastNoPermission": {
+    "APIMode": true,
+    "desc": {
+      "name": "DynamicBroadcastNoPermission",
+      "category": "ExportedComponentRisk",
+      "detail": "Detects dynamic registration of BroadcastReceiver via registerReceiver() without specifying a permission string, which exports the receiver to all apps on the device.",
+      "wiki": "",
+      "possibility": "3",
+      "model": "middle"
+    },
+    "sink": {
+      "<android.content.Context: android.content.Intent registerReceiver(android.content.BroadcastReceiver,android.content.IntentFilter)>": {},
+      "<android.content.ContextWrapper: android.content.Intent registerReceiver(android.content.BroadcastReceiver,android.content.IntentFilter)>": {}
+    }
+  }
+}

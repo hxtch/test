@@ -1,0 +1,91 @@
+{
+  "IntentRedirectionEnhanced": {
+    "enable": true,
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "IntentRedirectionEnhanced",
+      "category": "IntentRedirection",
+      "detail": "Enhanced Intent redirection detection. An exported component extracts a nested Intent from extras and forwards it to startActivity/startService/sendBroadcast without validating the target component, allowing attackers to launch private components or steal URI permissions.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "ExportedCompos": true
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: android.os.Parcelable getParcelableExtra(java.lang.String)>",
+        "<android.os.Bundle: android.os.Parcelable getParcelable(java.lang.String)>",
+        "<android.content.Intent: android.content.Intent parseUri(java.lang.String,int)>",
+        "<android.content.Intent: android.os.Bundle getExtras()>"
+      ]
+    },
+    "sink": {
+      "<*: * startActivit*(*)>": {
+        "LibraryOnly": true,
+        "TaintParamType": ["android.content.Intent", "android.content.Intent[]"],
+        "TaintCheck": ["p*"]
+      },
+      "<*: * startService*(*)>": {
+        "LibraryOnly": true,
+        "TaintParamType": ["android.content.Intent"],
+        "TaintCheck": ["p*"]
+      },
+      "<*: * startForegroundService(*)>": {
+        "LibraryOnly": true,
+        "TaintParamType": ["android.content.Intent"],
+        "TaintCheck": ["p*"]
+      },
+      "<*: * sendBroadcast*(*)>": {
+        "LibraryOnly": true,
+        "TaintParamType": ["android.content.Intent"],
+        "TaintCheck": ["p*"]
+      },
+      "<*: * sendOrderedBroadcast*(*)>": {
+        "LibraryOnly": true,
+        "TaintParamType": ["android.content.Intent"],
+        "TaintCheck": ["p*"]
+      },
+      "<android.app.Activity: void setResult(int,android.content.Intent)>": {
+        "TaintCheck": ["p1"]
+      }
+    },
+    "sanitizer": {
+      "setComponent": {
+        "<android.content.Intent: android.content.Intent setComponent(android.content.ComponentName)>": {
+          "TaintCheck": ["@this"]
+        }
+      },
+      "setClassName": {
+        "<android.content.Intent: android.content.Intent setClassName(android.content.Context,java.lang.String)>": {
+          "TaintCheck": ["@this"],
+          "NotTaint": ["p1"]
+        }
+      },
+      "setPackage": {
+        "<android.content.Intent: android.content.Intent setPackage(java.lang.String)>": {
+          "TaintCheck": ["@this"],
+          "NotTaint": ["p0"]
+        }
+      },
+      "setClass": {
+        "<android.content.Intent: android.content.Intent setClass(android.content.Context,java.lang.Class)>": {
+          "TaintCheck": ["@this"],
+          "NotTaint": ["p1"]
+        }
+      },
+      "resolveActivity": {
+        "<android.content.Intent: android.content.ComponentName resolveActivity(android.content.pm.PackageManager)>": {
+          "TaintCheck": ["@this"]
+        }
+      },
+      "removeFlags": {
+        "<android.content.Intent: void removeFlags(int)>": {
+          "TaintCheck": ["@this"]
+        }
+      }
+    }
+  }
+}

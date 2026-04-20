@@ -1,0 +1,29 @@
+{
+  "DexClassLoaderUntrusted": {
+    "DirectMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "DexClassLoaderUntrusted",
+      "category": "CodeExecutionRisk",
+      "detail": "Untrusted input flows into DexClassLoader, enabling dynamic loading of malicious code.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.DexClassLoaderVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.String getStringExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$DexClassLoader: void <init>(java.lang.String,java.lang.String,java.lang.String,java.lang.ClassLoader)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

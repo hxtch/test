@@ -1,0 +1,42 @@
+{
+  "IntentRedirectionEnhanced": {
+    "DirectMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "IntentRedirectionEnhanced",
+      "category": "IntentRedirection",
+      "detail": "Enhanced intent redirection",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.IntentRedirectionVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.Object getParcelableExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Context: void startActivity(net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Context: void startService(net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Context: void sendBroadcast(net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent)>": {
+        "TaintCheck": ["p0"]
+      }
+    },
+    "sanitizer": {
+      "setComponent": {
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent setComponent(java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        }
+      }
+    }
+  }
+}

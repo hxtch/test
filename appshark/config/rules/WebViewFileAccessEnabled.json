@@ -1,0 +1,17 @@
+{
+  "WebViewFileAccessEnabled": {
+    "APIMode": true,
+    "desc": {
+      "name": "WebViewFileAccessEnabled",
+      "category": "WebViewRisk",
+      "detail": "Detects WebView settings that enable file access from file URLs or universal access from file URLs, which can lead to local file exfiltration via malicious JavaScript.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "sink": {
+      "<android.webkit.WebSettings: void setAllowFileAccessFromFileURLs(boolean)>": {},
+      "<android.webkit.WebSettings: void setAllowUniversalAccessFromFileURLs(boolean)>": {}
+    }
+  }
+}

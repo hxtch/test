@@ -1,0 +1,41 @@
+{
+  "ExportedServiceBinding": {
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "ExportedServiceBinding",
+      "category": "ExportedComponentRisk",
+      "detail": "An exported Service receives untrusted Intent input in onBind() and forwards it to dangerous sinks such as command execution, content queries, or component launches.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": []
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.content.Intent: android.net.Uri getData()>",
+        "<android.os.Bundle: java.lang.String getString(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<java.lang.Runtime: java.lang.Process exec(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.ContentResolver: android.database.Cursor query(android.net.Uri,java.lang.String[],java.lang.String,java.lang.String[],java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.Context: void startActivity(android.content.Intent)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.Context: void startService(android.content.Intent)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.Context: void sendBroadcast(android.content.Intent)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

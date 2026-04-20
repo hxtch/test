@@ -1,0 +1,107 @@
+[
+  {
+    "rule_name": "WebViewUntrustedUrlLoad",
+    "apk_path": "test-apks/InsecureBankv2.apk",
+    "finding_id": "84ae26473b0992816b1a8093aa314cecf6c9f027",
+    "entry_method": "<com.android.insecurebankv2.ViewStatement: void onCreate(android.os.Bundle)>",
+    "source": "$r5 = virtualinvoke r4.<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>(\"uname\")",
+    "sink": "virtualinvoke r10_1.<android.webkit.WebView: void loadUrl(java.lang.String)>($r5_5)",
+    "taint_path": [
+      "<com.android.insecurebankv2.ViewStatement: void onCreate(android.os.Bundle)>->$r5",
+      "pf{obj{<CustomClass: void Main_Entry_CustomClass()>:0=>com.android.insecurebankv2.ViewStatement}(java.lang.String)->uname}",
+      "<com.android.insecurebankv2.ViewStatement: void onCreate(android.os.Bundle)>->$r5_4",
+      "<com.android.insecurebankv2.ViewStatement: void onCreate(android.os.Bundle)>->$r6_8",
+      "<com.android.insecurebankv2.ViewStatement: void onCreate(android.os.Bundle)>->$r6_9",
+      "<com.android.insecurebankv2.ViewStatement: void onCreate(android.os.Bundle)>->$r5_5"
+    ],
+    "manifest_context": {
+      "component_exported": true,
+      "component_permission": null,
+      "protection_level": "normal",
+      "intent_filters": []
+    },
+    "sanitizer_hits": [],
+    "verdict": "real_vulnerability",
+    "confidence": 0.92,
+    "reasoning_summary": "The ViewStatement activity is exported and receives an untrusted URL from Intent extras ('uname') without validation, then passes it directly to WebView.loadUrl(). No sanitizers (e.g., URL whitelist, scheme checks) were detected in the taint path. This matches the documented behavior of InsecureBankV2 and satisfies the exported-component + untrusted-input-to-WebView pattern.",
+    "evidence_for": [
+      "Component <com.android.insecurebankv2.ViewStatement> is exported=true in AndroidManifest.xml",
+      "Taint flows from Intent.getStringExtra(\"uname\") directly to WebView.loadUrl() without intermediate validation",
+      "No sanitizer (URL whitelist, scheme block, host check) matched along the propagation path",
+      "APK is a known vulnerable sample (InsecureBankV2) used for security training and tool validation"
+    ],
+    "evidence_against": [
+      "If the WebView had JavaScript disabled and only loaded HTTPS URLs, impact would be lower; however, no such hardening was observed"
+    ],
+    "required_follow_up": []
+  },
+  {
+    "rule_name": "ExportedComponentToSMS",
+    "apk_path": "test-apks/InsecureBankv2.apk",
+    "finding_id": "96e5bb4ef910a78c2cb6bdd3270f8c6612112c18",
+    "entry_method": "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>",
+    "source": "$r5 = virtualinvoke $r2.<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>(\"phonenumber\")",
+    "sink": "virtualinvoke $r11.<android.telephony.SmsManager: void sendTextMessage(java.lang.String,java.lang.String,java.lang.String,android.app.PendingIntent,android.app.PendingIntent)>($r5_1, null, $r6_1, null, null)",
+    "taint_path": [
+      "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>->$r5",
+      "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>->$r5_1"
+    ],
+    "manifest_context": {
+      "component_exported": true,
+      "component_permission": null,
+      "protection_level": "normal",
+      "intent_filters": [
+        "<action name=theBroadcast>"
+      ]
+    },
+    "sanitizer_hits": [],
+    "verdict": "real_vulnerability",
+    "confidence": 0.94,
+    "reasoning_summary": "MyBroadCastReceiver is exported with an intent-filter and reads 'phonenumber' from an untrusted Intent, forwarding it to SmsManager.sendTextMessage(). The app holds SEND_SMS permission. No permission checks, caller validation, or input sanitizers were found in the taint path. This is a textbook example of an exported component abusing a dangerous permission.",
+    "evidence_for": [
+      "Receiver <com.android.insecurebankv2.MyBroadCastReceiver> is exported=true and has intent-filter action 'theBroadcast'",
+      "Taint path shows Intent.getStringExtra(\"phonenumber\") -> SmsManager.sendTextMessage() without validation",
+      "Application manifest declares android.permission.SEND_SMS",
+      "No sanitizer matched; no explicit permission check (e.g., checkCallingPermission) in the propagation path"
+    ],
+    "evidence_against": [
+      "On modern Android versions (API 26+), implicit broadcasts to manifest-registered receivers are restricted, reducing attack surface; however, the app targets API 22 where this restriction does not apply"
+    ],
+    "required_follow_up": []
+  },
+  {
+    "rule_name": "ExportedComponentToSMS",
+    "apk_path": "test-apks/InsecureBankv2.apk",
+    "finding_id": "f7a1038615c8d3af4609226e3d152e9ba1d6f7d8",
+    "entry_method": "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>",
+    "source": "$r6 = virtualinvoke $r2.<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>(\"newpass\")",
+    "sink": "virtualinvoke $r11.<android.telephony.SmsManager: void sendTextMessage(java.lang.String,java.lang.String,java.lang.String,android.app.PendingIntent,android.app.PendingIntent)>($r5_1, null, $r6_1, null, null)",
+    "taint_path": [
+      "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>->$r6",
+      "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>->$r10_4",
+      "<com.android.insecurebankv2.MyBroadCastReceiver: void onReceive(android.content.Context,android.content.Intent)>->$r6_1"
+    ],
+    "manifest_context": {
+      "component_exported": true,
+      "component_permission": null,
+      "protection_level": "normal",
+      "intent_filters": [
+        "<action name=theBroadcast>"
+      ]
+    },
+    "sanitizer_hits": [],
+    "verdict": "real_vulnerability",
+    "confidence": 0.94,
+    "reasoning_summary": "Same exported broadcast receiver reads 'newpass' from an untrusted Intent and forwards it to SmsManager.sendTextMessage(). This is a second source-to-sink path within the same vulnerable component. No sanitizers or permission guards were detected.",
+    "evidence_for": [
+      "Same exported receiver with intent-filter action 'theBroadcast'",
+      "Taint path shows Intent.getStringExtra(\"newpass\") -> SmsManager.sendTextMessage() without validation",
+      "App holds SEND_SMS permission",
+      "No sanitizer or permission check in the propagation path"
+    ],
+    "evidence_against": [
+      "Modern Android implicit broadcast restrictions reduce exploitability on API 26+, but the app targets API 22"
+    ],
+    "required_follow_up": []
+  }
+]

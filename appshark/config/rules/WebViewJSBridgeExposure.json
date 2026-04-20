@@ -1,0 +1,16 @@
+{
+  "WebViewJSBridgeExposure": {
+    "APIMode": true,
+    "desc": {
+      "name": "WebViewJSBridgeExposure",
+      "category": "WebViewRisk",
+      "detail": "Detects usage of addJavascriptInterface which exposes native Java methods to JavaScript in WebView. If the WebView loads untrusted content, attackers can invoke exposed methods.",
+      "wiki": "",
+      "possibility": "3",
+      "model": "high"
+    },
+    "sink": {
+      "<android.webkit.WebView: void addJavascriptInterface(java.lang.Object,java.lang.String)>": {}
+    }
+  }
+}

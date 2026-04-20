@@ -1,0 +1,37 @@
+{
+  "ExportedComponentToExec": {
+    "DirectMode": true,
+    "traceDepth": 10,
+    "desc": {
+      "name": "ExportedComponentToExec",
+      "category": "ExportedComponentRisk",
+      "detail": "Command execution from exported component",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.ExportedComponentVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.String getStringExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<java.lang.Runtime: java.lang.Process exec(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      }
+    },
+    "sanitizer": {
+      "inputValidation": {
+        "<java.lang.String: boolean matches(java.lang.String)>": {
+          "TaintCheck": ["@this"],
+          "NotTaint": ["p0"]
+        }
+      }
+    }
+  }
+}

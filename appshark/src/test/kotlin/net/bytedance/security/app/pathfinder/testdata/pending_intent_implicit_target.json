@@ -1,0 +1,42 @@
+{
+  "PendingIntentImplicitTarget": {
+    "DirectMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "PendingIntentImplicitTarget",
+      "category": "IntentRisk",
+      "detail": "Untrusted Intent flows into PendingIntent creation without explicit component/package, allowing intent hijacking or redirection.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.PendingIntentImplicitTargetVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.Object getParcelableExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$PendingIntent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$PendingIntent getActivity(java.lang.Object,int,net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent,int)>": {
+        "TaintCheck": ["p2"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$PendingIntent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$PendingIntent getBroadcast(java.lang.Object,int,net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent,int)>": {
+        "TaintCheck": ["p2"]
+      }
+    },
+    "sanitizer": {
+      "setExplicit": {
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent setPackage(java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        },
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent setComponent(java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        }
+      }
+    }
+  }
+}

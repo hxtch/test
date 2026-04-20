@@ -1,0 +1,48 @@
+{
+  "PendingIntentImplicitTarget": {
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "PendingIntentImplicitTarget",
+      "category": "IntentRisk",
+      "detail": "Untrusted Intent flows into PendingIntent creation without explicit component/package, allowing intent hijacking or redirection.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": []
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: android.content.Intent getParcelableExtra(java.lang.String)>",
+        "<android.os.Bundle: android.content.Intent getParcelable(java.lang.String)>",
+        "<android.content.Context: android.content.Intent getIntent()>"
+      ]
+    },
+    "sink": {
+      "<android.app.PendingIntent: android.app.PendingIntent getActivity(android.content.Context,int,android.content.Intent,int)>": {
+        "TaintCheck": ["p2"]
+      },
+      "<android.app.PendingIntent: android.app.PendingIntent getService(android.content.Context,int,android.content.Intent,int)>": {
+        "TaintCheck": ["p2"]
+      },
+      "<android.app.PendingIntent: android.app.PendingIntent getBroadcast(android.content.Context,int,android.content.Intent,int)>": {
+        "TaintCheck": ["p2"]
+      }
+    },
+    "sanitizer": {
+      "setExplicit": {
+        "<android.content.Intent: android.content.Intent setComponent(java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        },
+        "<android.content.Intent: android.content.Intent setPackage(java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        },
+        "<android.content.Intent: android.content.Intent setClassName(android.content.Context,java.lang.String)>": {
+          "TaintCheck": ["@this"]
+        }
+      }
+    }
+  }
+}

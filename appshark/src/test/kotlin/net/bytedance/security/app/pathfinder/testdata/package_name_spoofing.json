@@ -1,0 +1,35 @@
+{
+  "PackageNameSpoofing": {
+    "DirectMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "PackageNameSpoofing",
+      "category": "CodeExecutionRisk",
+      "detail": "Untrusted input controls the target package or class name of an Intent used to start activities/services/broadcasts without signature verification, enabling package-name spoofing and malicious wakeup.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.PackageNameSpoofingVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.String getStringExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent setPackage(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent setClassName(java.lang.Object,java.lang.String)>": {
+        "TaintCheck": ["p1"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent setComponent(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

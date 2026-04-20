@@ -1,0 +1,32 @@
+{
+  "SQLInjectionRawQuery": {
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "SQLInjectionRawQuery",
+      "category": "DataRisk",
+      "detail": "Untrusted input flows into SQLiteDatabase.rawQuery() or execSQL() without parameterization, allowing SQL injection.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": []
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.os.Bundle: java.lang.String getString(java.lang.String)>",
+        "<android.net.Uri: java.lang.String getQueryParameter(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<android.database.sqlite.SQLiteDatabase: android.database.Cursor rawQuery(java.lang.String,java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.database.sqlite.SQLiteDatabase: void execSQL(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

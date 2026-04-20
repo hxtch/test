@@ -1,0 +1,51 @@
+{
+  "ExportedComponentToContentQuery": {
+    "SliceMode": true,
+    "traceDepth": 10,
+    "desc": {
+      "name": "ExportedComponentToContentQuery",
+      "category": "ExportedComponentRisk",
+      "detail": "An exported component receives untrusted Intent input and uses it to construct a ContentResolver query URI, potentially allowing access to sensitive content providers (contacts, SMS, call logs).",
+      "wiki": "",
+      "possibility": "3",
+      "model": "high"
+    },
+    "entry": {
+      "ExportedCompos": true
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: android.net.Uri getData()>",
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.content.Intent: java.lang.String getDataString()>"
+      ]
+    },
+    "sink": {
+      "<android.content.ContentResolver: android.database.Cursor query(android.net.Uri,java.lang.String[],java.lang.String,java.lang.String[],java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.ContentResolver: android.database.Cursor query(android.net.Uri,java.lang.String[],android.os.Bundle,android.os.CancellationSignal)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.ContentResolver: int delete(android.net.Uri,java.lang.String,java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.ContentResolver: int update(android.net.Uri,android.content.ContentValues,java.lang.String,java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.ContentResolver: android.net.Uri insert(android.net.Uri,android.content.ContentValues)>": {
+        "TaintCheck": ["p0"]
+      }
+    },
+    "sanitizer": {
+      "uriAuthority": {
+        "<android.net.Uri: java.lang.String getAuthority()>": {
+          "TaintCheck": ["@this"]
+        },
+        "<java.lang.String: boolean equals(java.lang.Object)>": {
+          "TaintCheck": ["@this"]
+        }
+      }
+    }
+  }
+}

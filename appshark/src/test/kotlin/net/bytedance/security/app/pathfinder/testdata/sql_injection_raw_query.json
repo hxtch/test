@@ -1,0 +1,32 @@
+{
+  "SQLInjectionRawQuery": {
+    "DirectMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "SQLInjectionRawQuery",
+      "category": "DataRisk",
+      "detail": "Untrusted input flows into SQLiteDatabase.rawQuery() or execSQL() without parameterization, allowing SQL injection.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": [
+        "<net.bytedance.security.app.pathfinder.testdata.SQLInjectionVuln: void f()>"
+      ]
+    },
+    "source": {
+      "Return": [
+        "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$Intent: java.lang.String getStringExtra(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$SQLiteDatabase: java.lang.Object rawQuery(java.lang.String,java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      },
+      "<net.bytedance.security.app.pathfinder.testdata.WebViewTestStubs$SQLiteDatabase: void execSQL(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

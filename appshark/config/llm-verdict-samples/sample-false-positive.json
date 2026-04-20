@@ -1,0 +1,33 @@
+{
+  "rule_name": "ExportedComponentToExec",
+  "apk_path": "/path/to/app.apk",
+  "finding_id": "def456hash",
+  "entry_method": "<com.example.app.DiagService: int onStartCommand(android.content.Intent,int,int)>",
+  "source": "<com.example.app.DiagService: int onStartCommand(android.content.Intent,int,int)>->$r2 (getStringExtra return)",
+  "sink": "<com.example.app.DiagService: void runDiag(java.lang.String)>->$r1 (Runtime.exec param)",
+  "taint_path": [
+    "$r2 = virtualinvoke $r1.<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>(\"diag_cmd\")",
+    "virtualinvoke $r0.<com.example.app.DiagService: void runDiag(java.lang.String)>($r2)",
+    "$r1 = virtualinvoke $r3.<java.lang.Runtime: java.lang.Process exec(java.lang.String)>($r2)"
+  ],
+  "manifest_context": {
+    "component_exported": true,
+    "component_permission": "com.example.app.permission.DIAG",
+    "protection_level": "signature",
+    "intent_filters": []
+  },
+  "sanitizer_hits": [],
+  "verdict": "likely_false_positive",
+  "confidence": 0.85,
+  "reasoning_summary": "Although a taint path exists from Intent extra to Runtime.exec(), the Service is protected by a signature-level permission. Only apps signed with the same certificate can invoke this component, preventing exploitation by third-party malicious apps.",
+  "evidence_for": [
+    "Taint path from getStringExtra to Runtime.exec is confirmed",
+    "No input validation or sanitizer on the command string"
+  ],
+  "evidence_against": [
+    "Component requires signature-level permission 'com.example.app.permission.DIAG'",
+    "Only same-signature apps can invoke this service",
+    "Signature permissions cannot be bypassed without the signing key"
+  ],
+  "required_follow_up": []
+}

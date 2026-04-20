@@ -1,0 +1,38 @@
+{
+  "CommandInjection": {
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "CommandInjection",
+      "category": "CodeExecutionRisk",
+      "detail": "Untrusted input flows into Runtime.exec() or ProcessBuilder without sanitization, allowing arbitrary command execution.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": []
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.os.Bundle: java.lang.String getString(java.lang.String)>",
+        "<android.net.Uri: java.lang.String getQueryParameter(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<java.lang.Runtime: java.lang.Process exec(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<java.lang.Runtime: java.lang.Process exec(java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      },
+      "<java.lang.ProcessBuilder: void <init>(java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      },
+      "<java.lang.ProcessBuilder: java.lang.ProcessBuilder command(java.lang.String[])>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

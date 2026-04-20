@@ -1,0 +1,41 @@
+{
+  "rule_name": "WebViewUntrustedUrlLoad",
+  "apk_path": "/path/to/app.apk",
+  "finding_id": "ghi789hash",
+  "entry_method": "<com.example.app.WebActivity: void onCreate(android.os.Bundle)>",
+  "source": "<com.example.app.WebActivity: void onCreate(android.os.Bundle)>->$r4 (getStringExtra return)",
+  "sink": "<com.example.app.WebActivity: void loadPage(java.lang.String)>->$r1 (WebView.loadUrl param)",
+  "taint_path": [
+    "$r4 = virtualinvoke $r2.<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>(\"page_url\")",
+    "virtualinvoke $r0.<com.example.app.WebActivity: void loadPage(java.lang.String)>($r4)",
+    "virtualinvoke $r1.<android.webkit.WebView: void loadUrl(java.lang.String)>($r4)"
+  ],
+  "manifest_context": {
+    "component_exported": true,
+    "component_permission": "",
+    "protection_level": "",
+    "intent_filters": ["android.intent.action.VIEW"]
+  },
+  "sanitizer_hits": [
+    { "sanitizer_name": "urlWhitelist", "matched": false, "location": "" }
+  ],
+  "verdict": "needs_manual_review",
+  "confidence": 0.55,
+  "reasoning_summary": "An exported Activity loads a URL from Intent extras into a WebView. While no URL whitelist sanitizer was detected, the static analysis cannot determine whether JavaScript is enabled or whether file access settings are dangerous. Manual review is needed to check WebSettings configuration and whether the WebView handles sensitive data.",
+  "evidence_for": [
+    "Component is exported with no permission",
+    "URL from getStringExtra flows to WebView.loadUrl without validation",
+    "No URL whitelist or host check detected"
+  ],
+  "evidence_against": [
+    "Cannot determine if JavaScript is enabled (requires runtime analysis)",
+    "Cannot determine if file access is enabled",
+    "WebView may only render informational content with no sensitive data"
+  ],
+  "required_follow_up": [
+    "Check if setJavaScriptEnabled(true) is called on this WebView",
+    "Check if addJavascriptInterface is used",
+    "Check if setAllowFileAccessFromFileURLs(true) is called",
+    "Verify what data the WebView page can access"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "PackageNameSpoofing": {
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "PackageNameSpoofing",
+      "category": "CodeExecutionRisk",
+      "detail": "Untrusted input controls the target package or class name of an Intent used to start activities/services/broadcasts without signature verification, enabling package-name spoofing and malicious wakeup.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": []
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.os.Bundle: java.lang.String getString(java.lang.String)>",
+        "<android.net.Uri: java.lang.String getQueryParameter(java.lang.String)>"
+      ]
+    },
+    "sink": {
+      "<android.content.Intent: android.content.Intent setPackage(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      },
+      "<android.content.Intent: android.content.Intent setClassName(android.content.Context,java.lang.String)>": {
+        "TaintCheck": ["p1"]
+      },
+      "<android.content.Intent: android.content.Intent setComponent(java.lang.String)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}

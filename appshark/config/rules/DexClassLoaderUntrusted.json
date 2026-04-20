@@ -1,0 +1,30 @@
+{
+  "DexClassLoaderUntrusted": {
+    "SliceMode": true,
+    "traceDepth": 8,
+    "desc": {
+      "name": "DexClassLoaderUntrusted",
+      "category": "CodeExecutionRisk",
+      "detail": "Untrusted input (Intent extra, external storage path) flows into DexClassLoader, enabling dynamic loading of malicious code.",
+      "wiki": "",
+      "possibility": "4",
+      "model": "high"
+    },
+    "entry": {
+      "methods": []
+    },
+    "source": {
+      "Return": [
+        "<android.content.Intent: java.lang.String getStringExtra(java.lang.String)>",
+        "<android.os.Bundle: java.lang.String getString(java.lang.String)>",
+        "<android.os.Environment: java.io.File getExternalStorageDirectory()>",
+        "<android.net.Uri: java.lang.String getPath()>"
+      ]
+    },
+    "sink": {
+      "<dalvik.system.DexClassLoader: void <init>(java.lang.String,java.lang.String,java.lang.String,java.lang.ClassLoader)>": {
+        "TaintCheck": ["p0"]
+      }
+    }
+  }
+}
