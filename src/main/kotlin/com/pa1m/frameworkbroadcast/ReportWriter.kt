@@ -4,42 +4,49 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 object ReportWriter {
-    fun write(outDir: Path, scanResult: ScanResult) {
+    fun write(outDir: Path, scanResult: ScanResult, writeAllRecords: Boolean = false) {
         Files.createDirectories(outDir)
-        val jsonlPath = outDir.resolve("dangerous_dynamic_broadcasts.jsonl")
-        val markdownPath = outDir.resolve("dangerous_dynamic_broadcasts.md")
+        val dangerousJsonlPath = outDir.resolve("dangerous_dynamic_broadcasts.jsonl")
+        val dangerousMarkdownPath = outDir.resolve("dangerous_dynamic_broadcasts.md")
+        val allJsonlPath = outDir.resolve("all_dynamic_broadcasts.jsonl")
+        val allMarkdownPath = outDir.resolve("all_dynamic_broadcasts.md")
         val summaryPath = outDir.resolve("scan_summary.json")
         val partialPath = outDir.resolve("partial_jars.jsonl")
         val failedPath = outDir.resolve("failed_jars.jsonl")
         val errorLogPath = outDir.resolve("scan_errors.log")
-        val records = scanResult.dangerousRecords
-        val summary = buildSummary(scanResult.jarResults)
 
         Files.writeString(
-            jsonlPath,
-            records.joinToString("\n") { it.toJsonLine() } + "\n"
+            dangerousJsonlPath,
+            scanResult.dangerousRecords.joinToString("\n") { it.toJsonLine() }.let { if (it.isEmpty()) "" else "$it\n" }
+        )
+        Files.writeString(
+            dangerousMarkdownPath,
+            buildMarkdown(
+                title = "Dangerous Dynamic Broadcasts",
+                countLabel = "Total dangerous broadcasts",
+                records = scanResult.dangerousRecords.map { it.toAllRecord() },
+            )
         )
 
-        val markdown = buildString {
-            appendLine("# Dangerous Dynamic Broadcasts")
-            appendLine()
-            appendLine("Total dangerous broadcasts: ${records.size}")
-            appendLine()
-            for ((index, item) in records.withIndex()) {
-                appendLine("## ${index + 1}. ${item.declaringClass}")
-                appendLine()
-                appendLine("- jar_path: `${item.jarPath}`")
-                appendLine("- declaring_method: `${item.declaringMethod}`")
-                appendLine("- source_line: `${item.sourceLine ?: -1}`")
-                appendLine("- action_list: `${item.actionList.joinToString(", ").ifEmpty { "<empty>" }}`")
-                appendLine("- broadcast_permission: `${item.broadcastPermission ?: "<null>"}`")
-                appendLine("- permission_protection_level: `${item.permissionProtectionLevel ?: "<null>"}`")
-                appendLine("- evidence: `${item.evidence}`")
-                appendLine()
-            }
+        if (writeAllRecords) {
+            Files.writeString(
+                allJsonlPath,
+                scanResult.allRecords.joinToString("\n") { it.toJsonLine() }.let { if (it.isEmpty()) "" else "$it\n" }
+            )
+            Files.writeString(
+                allMarkdownPath,
+                buildMarkdown(
+                    title = "All Dynamic Broadcasts",
+                    countLabel = "Total dynamic broadcasts",
+                    records = scanResult.allRecords,
+                )
+            )
+        } else {
+            Files.deleteIfExists(allJsonlPath)
+            Files.deleteIfExists(allMarkdownPath)
         }
-        Files.writeString(markdownPath, markdown)
-        Files.writeString(summaryPath, summary.toJson())
+
+        Files.writeString(summaryPath, buildSummary(scanResult).toJson())
         Files.writeString(
             partialPath,
             scanResult.jarResults
@@ -66,6 +73,8 @@ object ReportWriter {
                         append(jarResult.status.name.lowercase())
                         append("\ndangerous_count: ")
                         append(jarResult.dangerousCount)
+                        append("\nall_count: ")
+                        append(jarResult.allCount)
                         append("\nerror_type: ")
                         append(jarResult.errorType ?: "<null>")
                         append("\nerror_message: ")
@@ -76,12 +85,14 @@ object ReportWriter {
         )
     }
 
-    private fun buildSummary(jarResults: List<JarScanResult>): ScanSummary {
+    private fun buildSummary(scanResult: ScanResult): ScanSummary {
+        val jarResults = scanResult.jarResults
         val totalJars = jarResults.size
         val successJars = jarResults.count { it.status == JarScanStatus.SUCCESS }
         val partialJars = jarResults.count { it.status == JarScanStatus.PARTIAL }
         val failedJars = jarResults.count { it.status == JarScanStatus.FAILED }
-        val dangerousBroadcasts = jarResults.sumOf { it.dangerousCount }
+        val dangerousBroadcasts = scanResult.dangerousRecords.size
+        val allDynamicBroadcasts = scanResult.allRecords.size
         val fullSuccessRate = if (totalJars == 0) 0.0 else successJars.toDouble() / totalJars.toDouble()
         val processedRate = if (totalJars == 0) 0.0 else (successJars + partialJars).toDouble() / totalJars.toDouble()
         return ScanSummary(
@@ -90,12 +101,53 @@ object ReportWriter {
             partialJars = partialJars,
             failedJars = failedJars,
             dangerousBroadcasts = dangerousBroadcasts,
+            allDynamicBroadcasts = allDynamicBroadcasts,
             fullSuccessRate = fullSuccessRate,
             processedRate = processedRate,
         )
     }
 
-    private fun DangerousBroadcastRecord.toJsonLine(): String {
+    private fun buildMarkdown(
+        title: String,
+        countLabel: String,
+        records: List<AllDynamicBroadcastRecord>,
+    ): String {
+        return buildString {
+            appendLine("# $title")
+            appendLine()
+            appendLine("$countLabel: ${records.size}")
+            appendLine()
+            for ((index, item) in records.withIndex()) {
+                appendLine("## ${index + 1}. ${item.declaringClass}")
+                appendLine()
+                appendLine("- jar_path: `${item.jarPath}`")
+                appendLine("- declaring_method: `${item.declaringMethod}`")
+                appendLine("- source_line: `${item.sourceLine ?: -1}`")
+                appendLine("- action_list: `${item.actionList.joinToString(", ").ifEmpty { "<empty>" }}`")
+                appendLine("- broadcast_permission: `${item.broadcastPermission ?: "<null>"}`")
+                appendLine("- permission_protection_level: `${item.permissionProtectionLevel ?: "<null>"}`")
+                appendLine("- evidence: `${item.evidence}`")
+                appendLine()
+            }
+        }
+    }
+
+    private fun DangerousBroadcastRecord.toAllRecord(): AllDynamicBroadcastRecord {
+        return AllDynamicBroadcastRecord(
+            jarPath = jarPath,
+            declaringClass = declaringClass,
+            declaringMethod = declaringMethod,
+            sourceLine = sourceLine,
+            actionList = actionList,
+            broadcastPermission = broadcastPermission,
+            permissionProtectionLevel = permissionProtectionLevel,
+            evidence = evidence,
+        )
+    }
+
+    private fun DangerousBroadcastRecord.toJsonLine(): String = toAllRecord().toJsonLine()
+
+    private fun AllDynamicBroadcastRecord.toJsonLine(): String {
         return buildString {
             append("{")
             appendJsonField("jar_path", jarPath)
@@ -132,6 +184,8 @@ object ReportWriter {
             append(failedJars)
             append(",\"dangerous_broadcasts\":")
             append(dangerousBroadcasts)
+            append(",\"all_dynamic_broadcasts\":")
+            append(allDynamicBroadcasts)
             append(",\"full_success_rate\":")
             append(formatRate(fullSuccessRate))
             append(",\"processed_rate\":")
@@ -149,6 +203,9 @@ object ReportWriter {
             append(",")
             append("\"dangerous_count\":")
             append(dangerousCount)
+            append(",")
+            append("\"all_count\":")
+            append(allCount)
             append(",")
             appendJsonField("error_type", errorType)
             append(",")

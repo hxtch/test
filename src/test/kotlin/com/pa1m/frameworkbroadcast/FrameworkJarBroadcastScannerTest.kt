@@ -8,11 +8,18 @@ import org.junit.jupiter.api.Test
 import soot.G
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.PrintStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.tools.ToolProvider
+import kotlin.streams.toList
 
 class FrameworkJarBroadcastScannerTest {
     @Test
@@ -118,18 +125,18 @@ class FrameworkJarBroadcastScannerTest {
                     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler, int flags) { return null; }
                 }
             """.trimIndent(),
-            "sample/SampleReceiver.java" to """
-                package sample;
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
                 import android.content.BroadcastReceiver;
                 public class SampleReceiver extends BroadcastReceiver {}
             """.trimIndent(),
-            "sample/DummyContext.java" to """
-                package sample;
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
                 import android.content.Context;
                 public class DummyContext extends Context {}
             """.trimIndent(),
-            "sample/RegisterCases.java" to """
-                package sample;
+            "com/huawei/sample/RegisterCases.java" to """
+                package com.huawei.sample;
                 import android.content.Context;
                 import android.content.IntentFilter;
                 public class RegisterCases {
@@ -186,7 +193,7 @@ class FrameworkJarBroadcastScannerTest {
             """.trimIndent()
         )
 
-        val scanner = FrameworkJarBroadcastScanner()
+        val scanner = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.")
         val protectedActions = ProtectedBroadcastParser.parse(protectedXml)
         val permissions = PermissionDefinitionsParser.parse(permissionTxt)
 
@@ -195,6 +202,7 @@ class FrameworkJarBroadcastScannerTest {
         val byMethod = records.associateBy { it.declaringMethod.substringAfterLast(" ").substringBefore("(") }
 
         assertEquals(2, records.size)
+        assertTrue(scanResult.allRecords.isEmpty())
         assertEquals(1, scanResult.jarResults.size)
         assertEquals(JarScanStatus.SUCCESS, scanResult.jarResults.single().status)
         assertTrue("legacyNoPermission" in byMethod)
@@ -206,7 +214,618 @@ class FrameworkJarBroadcastScannerTest {
             listOf("android.intent.action.BOOT_COMPLETED", "com.test.CUSTOM_MIXED"),
             byMethod.getValue("mixedActionNeedsPermissionCheck").actionList
         )
+        assertTrue(records.all { it.declaringClass.startsWith("com.huawei.") })
         G.reset()
+    }
+
+    @Test
+    fun `scanner finds jars recursively in nested directories`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-recursive")
+        val jarDir = tempDir.resolve("jars")
+        val nestedDir = jarDir.resolve("level1/level2")
+        Files.createDirectories(nestedDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/RegisterCases.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class RegisterCases {
+                    private final Context context = new DummyContext();
+                    public void nestedJarHit() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.NESTED");
+                        context.registerReceiver(receiver, filter, "android.permission.NORMAL_PERMISSION", null);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, nestedDir.resolve("nested-sample.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(
+            permissionTxt,
+            """
+            All Permissions:
+            + permission:android.permission.NORMAL_PERMISSION
+              protectionLevel:normal
+            """.trimIndent()
+        )
+
+        val scanner = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.")
+        val result = scanner.scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.jarResults.size)
+        assertTrue(result.jarResults.single().jarPath.endsWith("nested-sample.jar"))
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(
+            "<com.huawei.sample.RegisterCases: void nestedJarHit()>",
+            result.dangerousRecords.single().declaringMethod
+        )
+        G.reset()
+    }
+
+    @Test
+    fun `scanner filters by package prefix when configured`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-filter")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/test/HuaweiReceiver.java" to """
+                package com.huawei.test;
+                import android.content.BroadcastReceiver;
+                public class HuaweiReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/test/HuaweiContext.java" to """
+                package com.huawei.test;
+                import android.content.Context;
+                public class HuaweiContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/test/HuaweiRegister.java" to """
+                package com.huawei.test;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class HuaweiRegister {
+                    private final Context context = new HuaweiContext();
+                    public void keepMe() {
+                        HuaweiReceiver receiver = new HuaweiReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.HUAWEI_ONLY");
+                        context.registerReceiver(receiver, filter, null, null);
+                    }
+                }
+            """.trimIndent(),
+            "sample/OtherReceiver.java" to """
+                package sample;
+                import android.content.BroadcastReceiver;
+                public class OtherReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "sample/OtherContext.java" to """
+                package sample;
+                import android.content.Context;
+                public class OtherContext extends Context {}
+            """.trimIndent(),
+            "sample/OtherRegister.java" to """
+                package sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class OtherRegister {
+                    private final Context context = new OtherContext();
+                    public void skipMe() {
+                        OtherReceiver receiver = new OtherReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.NON_HUAWEI");
+                        context.registerReceiver(receiver, filter, null, null);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("mixed.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(permissionTxt, "All Permissions:\n")
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertTrue(result.allRecords.isEmpty())
+        assertEquals("com.huawei.test.HuaweiRegister", result.dangerousRecords.single().declaringClass)
+        assertEquals("<com.huawei.test.HuaweiRegister: void keepMe()>", result.dangerousRecords.single().declaringMethod)
+        G.reset()
+    }
+
+    @Test
+    fun `scanner scans all classes by default`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-scan-all")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/test/HuaweiReceiver.java" to """
+                package com.huawei.test;
+                import android.content.BroadcastReceiver;
+                public class HuaweiReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/test/HuaweiContext.java" to """
+                package com.huawei.test;
+                import android.content.Context;
+                public class HuaweiContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/test/HuaweiRegister.java" to """
+                package com.huawei.test;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class HuaweiRegister {
+                    private final Context context = new HuaweiContext();
+                    public void keepMe() {
+                        HuaweiReceiver receiver = new HuaweiReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.HUAWEI_ONLY");
+                        context.registerReceiver(receiver, filter, null, null);
+                    }
+                }
+            """.trimIndent(),
+            "sample/OtherReceiver.java" to """
+                package sample;
+                import android.content.BroadcastReceiver;
+                public class OtherReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "sample/OtherContext.java" to """
+                package sample;
+                import android.content.Context;
+                public class OtherContext extends Context {}
+            """.trimIndent(),
+            "sample/OtherRegister.java" to """
+                package sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class OtherRegister {
+                    private final Context context = new OtherContext();
+                    public void keepMeToo() {
+                        OtherReceiver receiver = new OtherReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.NON_HUAWEI");
+                        context.registerReceiver(receiver, filter, null, null);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("mixed-all.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(permissionTxt, "All Permissions:\n")
+
+        val result = FrameworkJarBroadcastScanner().scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(2, result.dangerousRecords.size)
+        assertTrue(result.allRecords.isEmpty())
+        assertTrue(result.dangerousRecords.any { it.declaringClass == "com.huawei.test.HuaweiRegister" })
+        assertTrue(result.dangerousRecords.any { it.declaringClass == "sample.OtherRegister" })
+        G.reset()
+    }
+
+    @Test
+    fun `scan all receivers collects full dynamic broadcast list`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-all-records")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public static final int RECEIVER_NOT_EXPORTED = 0x4;
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) { return null; }
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler, int flags) { return null; }
+                }
+            """.trimIndent(),
+            "sample/SampleReceiver.java" to """
+                package sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "sample/DummyContext.java" to """
+                package sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "sample/RegisterCases.java" to """
+                package sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class RegisterCases {
+                    private final Context context = new DummyContext();
+                    public void customOnly() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.CUSTOM_ONLY");
+                        context.registerReceiver(receiver, filter);
+                    }
+                    public void protectedOnly() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("android.intent.action.BOOT_COMPLETED");
+                        context.registerReceiver(receiver, filter);
+                    }
+                    public void signaturePermission() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.CUSTOM_SIG");
+                        context.registerReceiver(receiver, filter, "android.permission.SIGNATURE_ONLY", null);
+                    }
+                    public void notExported() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.PRIVATE");
+                        context.registerReceiver(receiver, filter, null, null, Context.RECEIVER_NOT_EXPORTED);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("all-records.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(
+            permissionTxt,
+            """
+            All Permissions:
+            + permission:android.permission.SIGNATURE_ONLY
+              protectionLevel:signature|role
+            """.trimIndent()
+        )
+
+        val result = FrameworkJarBroadcastScanner(scanAllReceivers = true).scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(4, result.allRecords.size)
+        assertTrue(result.allRecords.any { it.actionList == listOf("com.test.CUSTOM_ONLY") })
+        assertTrue(result.allRecords.any { it.actionList == listOf("android.intent.action.BOOT_COMPLETED") })
+        assertTrue(result.allRecords.any { it.broadcastPermission == "android.permission.SIGNATURE_ONLY" })
+        assertTrue(result.allRecords.any { it.actionList == listOf("com.test.PRIVATE") })
+        G.reset()
+    }
+
+    @Test
+    fun `artifact discovery detects class jar dex jar and apk`() {
+        val tempDir = Files.createTempDirectory("artifact-discovery")
+        val classJar = tempDir.resolve("sample-class.jar")
+        val dexJar = tempDir.resolve("sample-dex.jar")
+        val apk = tempDir.resolve("sample.apk")
+        createZipArchive(classJar, mapOf("Sample.class" to "abc".toByteArray(StandardCharsets.UTF_8)))
+        createZipArchive(dexJar, mapOf("classes.dex" to "dex".toByteArray(StandardCharsets.UTF_8)))
+        createZipArchive(apk, mapOf("classes.dex" to "dex".toByteArray(StandardCharsets.UTF_8)))
+
+        val artifacts = ArtifactDiscovery.collect(tempDir, InputTypeMode.AUTO)
+
+        val byName = artifacts.associateBy { Path.of(it.path).fileName.toString() }
+        assertEquals(ArtifactType.CLASS_JAR, byName.getValue("sample-class.jar").artifactType)
+        assertEquals(ArtifactType.DEX_JAR, byName.getValue("sample-dex.jar").artifactType)
+        assertEquals(ArtifactType.APK, byName.getValue("sample.apk").artifactType)
+    }
+
+    @Test
+    fun `scanner supports dex jar and apk inputs`() {
+        val androidPlatforms = Path.of("/Users/pa1m/workspace/appshark/config/tools/platforms")
+        val androidJar = Path.of(ArtifactDiscovery.resolveAndroidJar(androidPlatforms)!!)
+        val tempDir = Files.createTempDirectory("framework-broadcast-dex-apk")
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+        val samplesDir = tempDir.resolve("samples")
+        Files.createDirectories(samplesDir)
+
+        val sources = mapOf(
+            "com/huawei/sample/RegisterCases.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class RegisterCases {
+                    public void customNormal(Context context, BroadcastReceiver receiver) {
+                        IntentFilter filter = new IntentFilter("com.test.DEX_CUSTOM");
+                        context.registerReceiver(receiver, filter, "android.permission.NORMAL_PERMISSION", null);
+                    }
+                    public void protectedOnly(Context context, BroadcastReceiver receiver) {
+                        IntentFilter filter = new IntentFilter("android.intent.action.BOOT_COMPLETED");
+                        context.registerReceiver(receiver, filter);
+                    }
+                }
+            """.trimIndent()
+        )
+
+        compileJavaSources(sources, classesDir, classpath = listOf(androidJar))
+        val inputJar = samplesDir.resolve("input-classes.jar")
+        createJarFromClasses(classesDir, inputJar)
+        val dexOutputDir = samplesDir.resolve("dex-out")
+        runD8(inputJar, androidJar, dexOutputDir)
+        val dexJar = samplesDir.resolve("sample-dex.jar")
+        val apk = samplesDir.resolve("sample.apk")
+        val classesDex = dexOutputDir.resolve("classes.dex")
+        createZipArchive(dexJar, mapOf("classes.dex" to Files.readAllBytes(classesDex)))
+        createZipArchive(
+            apk,
+            mapOf(
+                "classes.dex" to Files.readAllBytes(classesDex),
+                "AndroidManifest.xml" to """
+                    <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.huawei.sample">
+                      <application />
+                    </manifest>
+                """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+            )
+        )
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(
+            permissionTxt,
+            """
+            All Permissions:
+            + permission:android.permission.NORMAL_PERMISSION
+              protectionLevel:normal
+            """.trimIndent()
+        )
+
+        val scanner = FrameworkJarBroadcastScanner(scanAllReceivers = true, packagePrefix = "com.huawei.")
+        val protectedActions = ProtectedBroadcastParser.parse(protectedXml)
+        val permissions = PermissionDefinitionsParser.parse(permissionTxt)
+
+        val dexResult = scanner.scan(
+            inputPath = dexJar,
+            inputType = InputTypeMode.DEX_JAR,
+            protectedBroadcasts = protectedActions,
+            permissions = permissions,
+            androidPlatforms = androidPlatforms,
+        )
+        val apkResult = scanner.scan(
+            inputPath = apk,
+            inputType = InputTypeMode.APK,
+            protectedBroadcasts = protectedActions,
+            permissions = permissions,
+            androidPlatforms = androidPlatforms,
+        )
+
+        assertEquals(1, dexResult.dangerousRecords.size)
+        assertEquals(2, dexResult.allRecords.size)
+        assertEquals(listOf("com.test.DEX_CUSTOM"), dexResult.dangerousRecords.single().actionList)
+        assertEquals("normal", dexResult.dangerousRecords.single().permissionProtectionLevel)
+        assertEquals(ArtifactType.DEX_JAR, dexResult.jarResults.single().artifactType)
+
+        assertEquals(1, apkResult.dangerousRecords.size)
+        assertEquals(2, apkResult.allRecords.size)
+        assertEquals(listOf("com.test.DEX_CUSTOM"), apkResult.dangerousRecords.single().actionList)
+        assertEquals(ArtifactType.APK, apkResult.jarResults.single().artifactType)
+        G.reset()
+    }
+
+    @Test
+    fun `parse args supports package prefix option`() {
+        val tempDir = Files.createTempDirectory("scan-args")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val protectedXml = tempDir.resolve("proaction.xml")
+        val permissions = tempDir.resolve("permission.txt")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        Files.writeString(permissions, "All Permissions:\n")
+
+        val withPrefix = parseArgs(
+            arrayOf(
+                "--jar-dir", jarDir.toString(),
+                "--protected-broadcasts", protectedXml.toString(),
+                "--permissions", permissions.toString(),
+                "--package-prefix", "com.huawei",
+            )
+        )
+        val defaultAll = parseArgs(
+            arrayOf(
+                "--jar-dir", jarDir.toString(),
+                "--protected-broadcasts", protectedXml.toString(),
+                "--permissions", permissions.toString(),
+            )
+        )
+
+        assertEquals("com.huawei", withPrefix.packagePrefix)
+        assertNull(defaultAll.packagePrefix)
+        assertFalse(defaultAll.scanAllReceivers)
+        assertEquals(jarDir.toString(), withPrefix.inputPath)
+        assertEquals(InputTypeMode.AUTO, withPrefix.inputType)
+        assertEquals(1, withPrefix.jobs)
+    }
+
+    @Test
+    fun `parse args keeps scan all receivers flag for compatibility`() {
+        val tempDir = Files.createTempDirectory("scan-args-compat")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val protectedXml = tempDir.resolve("proaction.xml")
+        val permissions = tempDir.resolve("permission.txt")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        Files.writeString(permissions, "All Permissions:\n")
+
+        val flagOnly = parseArgs(
+            arrayOf(
+                "--jar-dir", jarDir.toString(),
+                "--protected-broadcasts", protectedXml.toString(),
+                "--permissions", permissions.toString(),
+                "--scan-all-receivers",
+            )
+        )
+
+        assertTrue(flagOnly.scanAllReceivers)
+    }
+
+    @Test
+    fun `parse args supports input type android platforms and jobs`() {
+        val tempDir = Files.createTempDirectory("scan-args-new")
+        val apk = tempDir.resolve("sample.apk")
+        val protectedXml = tempDir.resolve("proaction.xml")
+        val permissions = tempDir.resolve("permission.txt")
+        val platforms = tempDir.resolve("platforms")
+        Files.write(apk, byteArrayOf(0x50, 0x4b, 0x03, 0x04))
+        Files.createDirectories(platforms)
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        Files.writeString(permissions, "All Permissions:\n")
+
+        val parsed = parseArgs(
+            arrayOf(
+                "--input-path", apk.toString(),
+                "--input-type", "apk",
+                "--protected-broadcasts", protectedXml.toString(),
+                "--permissions", permissions.toString(),
+                "--android-platforms", platforms.toString(),
+                "-j", "4",
+            )
+        )
+
+        assertEquals(apk.toString(), parsed.inputPath)
+        assertEquals(InputTypeMode.APK, parsed.inputType)
+        assertEquals(platforms.toString(), parsed.androidPlatforms)
+        assertEquals(4, parsed.jobs)
     }
 
     @Test
@@ -226,11 +845,13 @@ class FrameworkJarBroadcastScannerTest {
         )
         val scanResult = ScanResult(
             dangerousRecords = records,
+            allRecords = emptyList(),
             jarResults = listOf(
                 JarScanResult(
                     jarPath = "/tmp/sample.jar",
                     status = JarScanStatus.SUCCESS,
                     dangerousRecords = records,
+                    allRecords = emptyList(),
                 )
             )
         )
@@ -249,9 +870,11 @@ class FrameworkJarBroadcastScannerTest {
         assertTrue(markdown.contains("Dangerous Dynamic Broadcasts"))
         assertTrue(markdown.contains("broadcast_permission"))
         assertTrue(summary.contains("\"dangerous_broadcasts\":1"))
+        assertTrue(summary.contains("\"all_dynamic_broadcasts\":0"))
         assertTrue(summary.contains("\"success_jars\":1"))
         assertTrue(partialJsonl.isEmpty())
         assertTrue(failedJsonl.isEmpty())
+        assertFalse(Files.exists(outDir.resolve("all_dynamic_broadcasts.jsonl")))
     }
 
     @Test
@@ -275,39 +898,86 @@ class FrameworkJarBroadcastScannerTest {
             evidence = "invoke"
         )
         val scanner = object : FrameworkJarBroadcastScanner() {
-            override fun scanSingleJar(
-                targetJar: Path,
-                classpathJars: List<String>,
+            override fun scanSingleArtifact(
+                artifact: ScanArtifact,
+                environment: ScanEnvironment,
                 protectedBroadcasts: Set<String>,
                 permissions: Map<String, PermissionMeta>,
             ): JarScanResult {
-                return when (targetJar.fileName.toString()) {
-                    "good.jar" -> JarScanResult(targetJar.toString(), JarScanStatus.SUCCESS, emptyList())
+                return when (Path.of(artifact.path).fileName.toString()) {
+                    "good.jar" -> JarScanResult(artifact.path, JarScanStatus.SUCCESS, emptyList(), emptyList())
                     "partial.jar" -> JarScanResult(
-                        targetJar.toString(),
+                        artifact.path,
                         JarScanStatus.PARTIAL,
                         listOf(dangerous),
+                        listOf(
+                            AllDynamicBroadcastRecord(
+                                jarPath = partialJar.toString(),
+                                declaringClass = "sample.Partial",
+                                declaringMethod = "<sample.Partial: void run()>",
+                                sourceLine = 7,
+                                actionList = listOf("com.test.PARTIAL"),
+                                broadcastPermission = null,
+                                permissionProtectionLevel = null,
+                                evidence = "invoke"
+                            )
+                        ),
                         "RuntimeException",
-                        "boom after partial results"
+                        "boom after partial results",
+                        artifactType = artifact.artifactType,
                     )
                     else -> JarScanResult(
-                        targetJar.toString(),
+                        artifact.path,
                         JarScanStatus.FAILED,
                         emptyList(),
+                        emptyList(),
                         "IOException",
-                        "cannot parse jar"
+                        "cannot parse jar",
+                        artifactType = artifact.artifactType,
                     )
                 }
             }
         }
 
-        val result = scanner.scan(jarDir, emptySet(), emptyMap())
+        val result = scanner.scan(
+            inputPath = jarDir,
+            inputType = InputTypeMode.CLASS_JAR,
+            protectedBroadcasts = emptySet(),
+            permissions = emptyMap(),
+        )
 
         assertEquals(1, result.dangerousRecords.size)
+        assertEquals(1, result.allRecords.size)
         assertEquals(partialJar.toString(), result.dangerousRecords.single().jarPath)
         assertEquals(1, result.jarResults.count { it.status == JarScanStatus.SUCCESS })
         assertEquals(1, result.jarResults.count { it.status == JarScanStatus.PARTIAL })
         assertEquals(1, result.jarResults.count { it.status == JarScanStatus.FAILED })
+    }
+
+    @Test
+    fun `progress reporter prints readable non tty progress`() {
+        val buffer = ByteArrayOutputStream()
+        val reporter = ScanProgressReporter(PrintStream(buffer, true), interactive = false)
+
+        reporter.onScanStarted(2)
+        reporter.onJarFinished(
+            currentIndex = 1,
+            totalJars = 2,
+            jarResult = JarScanResult("/tmp/a.jar", JarScanStatus.SUCCESS, emptyList(), emptyList()),
+            dangerousTotal = 0,
+        )
+        reporter.onJarFinished(
+            currentIndex = 2,
+            totalJars = 2,
+            jarResult = JarScanResult("/tmp/b.jar", JarScanStatus.PARTIAL, emptyList(), emptyList(), "RuntimeException", "boom"),
+            dangerousTotal = 3,
+        )
+        reporter.onScanCompleted()
+
+        val output = buffer.toString(Charsets.UTF_8)
+        assertTrue(output.contains("scan started: total_jars=2"))
+        assertTrue(output.contains("progress: 1/2 success=1 partial=0 failed=0 dangerous=0 status=success current=a.jar"))
+        assertTrue(output.contains("progress: 2/2 success=1 partial=1 failed=0 dangerous=3 status=partial current=b.jar"))
     }
 
     @Test
@@ -325,10 +995,40 @@ class FrameworkJarBroadcastScannerTest {
         )
         val scanResult = ScanResult(
             dangerousRecords = listOf(dangerous),
+            allRecords = listOf(
+                AllDynamicBroadcastRecord(
+                    jarPath = "/tmp/partial.jar",
+                    declaringClass = "sample.Partial",
+                    declaringMethod = "<sample.Partial: void run()>",
+                    sourceLine = 7,
+                    actionList = listOf("com.test.PARTIAL"),
+                    broadcastPermission = null,
+                    permissionProtectionLevel = null,
+                    evidence = "invoke"
+                )
+            ),
             jarResults = listOf(
-                JarScanResult("/tmp/good.jar", JarScanStatus.SUCCESS, emptyList()),
-                JarScanResult("/tmp/partial.jar", JarScanStatus.PARTIAL, listOf(dangerous), "RuntimeException", "boom"),
-                JarScanResult("/tmp/failed.jar", JarScanStatus.FAILED, emptyList(), "IOException", "broken")
+                JarScanResult("/tmp/good.jar", JarScanStatus.SUCCESS, emptyList(), emptyList()),
+                JarScanResult(
+                    "/tmp/partial.jar",
+                    JarScanStatus.PARTIAL,
+                    listOf(dangerous),
+                    listOf(
+                        AllDynamicBroadcastRecord(
+                            jarPath = "/tmp/partial.jar",
+                            declaringClass = "sample.Partial",
+                            declaringMethod = "<sample.Partial: void run()>",
+                            sourceLine = 7,
+                            actionList = listOf("com.test.PARTIAL"),
+                            broadcastPermission = null,
+                            permissionProtectionLevel = null,
+                            evidence = "invoke"
+                        )
+                    ),
+                    "RuntimeException",
+                    "boom"
+                ),
+                JarScanResult("/tmp/failed.jar", JarScanStatus.FAILED, emptyList(), emptyList(), "IOException", "broken")
             )
         )
 
@@ -344,6 +1044,7 @@ class FrameworkJarBroadcastScannerTest {
         assertTrue(summary.contains("\"partial_jars\":1"))
         assertTrue(summary.contains("\"failed_jars\":1"))
         assertTrue(summary.contains("\"dangerous_broadcasts\":1"))
+        assertTrue(summary.contains("\"all_dynamic_broadcasts\":1"))
         assertTrue(partialJsonl.contains("\"status\":\"partial\""))
         assertTrue(partialJsonl.contains("\"jar_path\":\"/tmp/partial.jar\""))
         assertTrue(failedJsonl.contains("\"status\":\"failed\""))
@@ -353,7 +1054,70 @@ class FrameworkJarBroadcastScannerTest {
         assertFalse(errorLog.contains("jar_path: /tmp/good.jar"))
     }
 
-    private fun compileJavaSources(sources: Map<String, String>, classesDir: Path) {
+    @Test
+    fun `report writer emits all dynamic broadcast files when requested`() {
+        val outDir = Files.createTempDirectory("broadcast-all-report")
+        val dangerous = DangerousBroadcastRecord(
+            jarPath = "/tmp/sample.jar",
+            declaringClass = "sample.RegisterCases",
+            declaringMethod = "<sample.RegisterCases: void customOnly()>",
+            sourceLine = 11,
+            actionList = listOf("com.test.CUSTOM"),
+            broadcastPermission = null,
+            permissionProtectionLevel = null,
+            evidence = "invoke"
+        )
+        val allRecords = listOf(
+            AllDynamicBroadcastRecord(
+                jarPath = dangerous.jarPath,
+                declaringClass = dangerous.declaringClass,
+                declaringMethod = dangerous.declaringMethod,
+                sourceLine = dangerous.sourceLine,
+                actionList = dangerous.actionList,
+                broadcastPermission = dangerous.broadcastPermission,
+                permissionProtectionLevel = dangerous.permissionProtectionLevel,
+                evidence = dangerous.evidence
+            ),
+            AllDynamicBroadcastRecord(
+                jarPath = "/tmp/sample.jar",
+                declaringClass = "sample.RegisterCases",
+                declaringMethod = "<sample.RegisterCases: void protectedOnly()>",
+                sourceLine = 17,
+                actionList = listOf("android.intent.action.BOOT_COMPLETED"),
+                broadcastPermission = null,
+                permissionProtectionLevel = null,
+                evidence = "invoke"
+            )
+        )
+        val scanResult = ScanResult(
+            dangerousRecords = listOf(dangerous),
+            allRecords = allRecords,
+            jarResults = listOf(
+                JarScanResult(
+                    jarPath = "/tmp/sample.jar",
+                    status = JarScanStatus.SUCCESS,
+                    dangerousRecords = listOf(dangerous),
+                    allRecords = allRecords,
+                )
+            )
+        )
+
+        ReportWriter.write(outDir, scanResult, writeAllRecords = true)
+
+        val allJsonl = Files.readString(outDir.resolve("all_dynamic_broadcasts.jsonl"))
+        val allMarkdown = Files.readString(outDir.resolve("all_dynamic_broadcasts.md"))
+        val summary = Files.readString(outDir.resolve("scan_summary.json"))
+
+        assertTrue(allJsonl.contains("\"action_list\":[\"android.intent.action.BOOT_COMPLETED\"]"))
+        assertTrue(allMarkdown.contains("All Dynamic Broadcasts"))
+        assertTrue(summary.contains("\"all_dynamic_broadcasts\":2"))
+    }
+
+    private fun compileJavaSources(
+        sources: Map<String, String>,
+        classesDir: Path,
+        classpath: List<Path> = emptyList(),
+    ) {
         val sourceDir = Files.createTempDirectory("broadcast-java-src")
         for ((relativePath, content) in sources) {
             val file = sourceDir.resolve(relativePath)
@@ -369,7 +1133,10 @@ class FrameworkJarBroadcastScannerTest {
         val fileManager = compiler.getStandardFileManager(null, null, null)
         fileManager.use { manager ->
             val units = manager.getJavaFileObjectsFromFiles(javaFiles.map { it.toFile() })
-            val options = listOf("-g", "-d", classesDir.toString())
+            val options = mutableListOf("-g", "-d", classesDir.toString())
+            if (classpath.isNotEmpty()) {
+                options += listOf("-classpath", classpath.joinToString(File.pathSeparator) { it.toString() })
+            }
             val ok = compiler.getTask(null, manager, null, options, null, units).call()
             check(ok) { "测试样例编译失败" }
         }
@@ -388,5 +1155,47 @@ class FrameworkJarBroadcastScannerTest {
         }
     }
 
-    private fun <T> java.util.stream.Stream<T>.toList(): List<T> = use { it.toList() }
+    private fun createZipArchive(zipPath: Path, entries: Map<String, ByteArray>) {
+        ZipOutputStream(Files.newOutputStream(zipPath)).use { zip ->
+            entries.forEach { (name, content) ->
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(content)
+                zip.closeEntry()
+            }
+        }
+    }
+
+    private fun runD8(inputJar: Path, androidJar: Path, outputDir: Path) {
+        Files.createDirectories(outputDir)
+        val r8Jar = findR8Jar()
+        val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString()
+        val process = ProcessBuilder(
+            listOf(
+                javaExecutable,
+                "-cp",
+                r8Jar,
+                "com.android.tools.r8.D8",
+                "--lib",
+                androidJar.toString(),
+                "--min-api",
+                "21",
+                "--output",
+                outputDir.toString(),
+                inputJar.toString(),
+            )
+        )
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.readBytes().toString(StandardCharsets.UTF_8)
+        val exitCode = process.waitFor()
+        check(exitCode == 0) { "D8 执行失败: $output" }
+        check(Files.isRegularFile(outputDir.resolve("classes.dex"))) { "D8 未生成 classes.dex: $output" }
+    }
+
+    private fun findR8Jar(): String {
+        return System.getProperty("java.class.path")
+            .split(File.pathSeparator)
+            .firstOrNull { it.contains("r8", ignoreCase = true) && it.endsWith(".jar") }
+            ?: error("测试运行时 classpath 中未找到 r8 jar")
+    }
 }

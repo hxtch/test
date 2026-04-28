@@ -16,6 +16,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.8.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(kotlin("test"))
+    testImplementation("com.android.tools:r8:8.3.37")
 }
 
 application {
