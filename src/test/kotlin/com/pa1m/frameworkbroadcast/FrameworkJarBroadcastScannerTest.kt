@@ -219,6 +219,352 @@ class FrameworkJarBroadcastScannerTest {
     }
 
     @Test
+    fun `scanner resolves actions when filter local is aliased before registerReceiver`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-alias")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/AliasRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class AliasRegister {
+                    private final Context context = new DummyContext();
+                    public void aliasFilter() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter original = new IntentFilter();
+                        IntentFilter alias = original;
+                        alias.addAction("com.test.ALIAS_ACTION");
+                        context.registerReceiver(receiver, alias);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("alias.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(permissionTxt, "All Permissions:\n")
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(listOf("com.test.ALIAS_ACTION"), result.dangerousRecords.single().actionList)
+        G.reset()
+    }
+
+    @Test
+    fun `scanner merges actions across multiple filter aliases`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-multi-alias")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/AliasMergeRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class AliasMergeRegister {
+                    private final Context context = new DummyContext();
+                    public void aliasMerge() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter();
+                        IntentFilter alias1 = filter;
+                        IntentFilter alias2 = alias1;
+                        alias1.addAction("com.test.ACTION_A");
+                        alias2.addAction("com.test.ACTION_B");
+                        context.registerReceiver(receiver, alias2);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("alias-merge.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(permissionTxt, "All Permissions:\n")
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(listOf("com.test.ACTION_A", "com.test.ACTION_B"), result.dangerousRecords.single().actionList)
+        G.reset()
+    }
+
+    @Test
+    fun `scanner keeps merged actions across simple branches`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-branches")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/BranchRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class BranchRegister {
+                    private final Context context = new DummyContext();
+                    public void branchAddAction(boolean chooseA) {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter();
+                        if (chooseA) {
+                            filter.addAction("com.test.BRANCH_A");
+                        } else {
+                            filter.addAction("com.test.BRANCH_B");
+                        }
+                        context.registerReceiver(receiver, filter);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("branch.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(permissionTxt, "All Permissions:\n")
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(listOf("com.test.BRANCH_A", "com.test.BRANCH_B"), result.dangerousRecords.single().actionList)
+        G.reset()
+    }
+
+    @Test
+    fun `scanner resolves permission and flags from static final fields and locals`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-consts")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public static final int RECEIVER_VISIBLE_TO_INSTANT_APPS = 0x1;
+                    public static final int RECEIVER_EXPORTED = 0x2;
+                    public static final int RECEIVER_NOT_EXPORTED = 0x4;
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler, int flags) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/FieldConstRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class FieldConstRegister {
+                    private static final String NORMAL_PERMISSION = "android.permission.NORMAL_PERMISSION";
+                    private static final int PRIVATE_FLAGS = Context.RECEIVER_NOT_EXPORTED | Context.RECEIVER_VISIBLE_TO_INSTANT_APPS;
+                    private final Context context = new DummyContext();
+                    public void fromStaticField() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.FIELD_PERMISSION");
+                        String permission = NORMAL_PERMISSION;
+                        context.registerReceiver(receiver, filter, permission, null);
+                    }
+                    public void fromStaticFlags() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter("com.test.PRIVATE_FLAGS");
+                        int flags = PRIVATE_FLAGS;
+                        context.registerReceiver(receiver, filter, null, null, flags);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("field-consts.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(
+            permissionTxt,
+            """
+            All Permissions:
+            + permission:android.permission.NORMAL_PERMISSION
+              protectionLevel:normal
+            """.trimIndent()
+        )
+
+        val allResult = FrameworkJarBroadcastScanner(scanAllReceivers = true, packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, allResult.dangerousRecords.size)
+        val dangerous = allResult.dangerousRecords.single()
+        assertEquals("<com.huawei.sample.FieldConstRegister: void fromStaticField()>", dangerous.declaringMethod)
+        assertEquals("android.permission.NORMAL_PERMISSION", dangerous.broadcastPermission)
+        assertEquals("normal", dangerous.permissionProtectionLevel)
+        assertTrue(allResult.allRecords.any { it.declaringMethod == "<com.huawei.sample.FieldConstRegister: void fromStaticFlags()>" })
+        assertFalse(allResult.dangerousRecords.any { it.declaringMethod == "<com.huawei.sample.FieldConstRegister: void fromStaticFlags()>" })
+        G.reset()
+    }
+
+    @Test
     fun `scanner finds jars recursively in nested directories`() {
         val tempDir = Files.createTempDirectory("framework-broadcast-recursive")
         val jarDir = tempDir.resolve("jars")

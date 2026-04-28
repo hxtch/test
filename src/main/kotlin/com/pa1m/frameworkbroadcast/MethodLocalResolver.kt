@@ -2,17 +2,22 @@ package com.pa1m.frameworkbroadcast
 
 import soot.Body
 import soot.Local
+import soot.SootField
 import soot.Value
 import soot.jimple.AssignStmt
 import soot.jimple.BinopExpr
 import soot.jimple.CastExpr
+import soot.jimple.FieldRef
 import soot.jimple.InstanceInvokeExpr
 import soot.jimple.IntConstant
 import soot.jimple.NewExpr
 import soot.jimple.NullConstant
 import soot.jimple.SpecialInvokeExpr
+import soot.jimple.StaticFieldRef
 import soot.jimple.Stmt
 import soot.jimple.StringConstant
+import soot.tagkit.IntegerConstantValueTag
+import soot.tagkit.StringConstantValueTag
 import soot.toolkits.graph.ExceptionalUnitGraph
 import soot.toolkits.scalar.SimpleLocalDefs
 import kotlin.streams.toList
@@ -29,6 +34,7 @@ class MethodLocalResolver(private val body: Body) {
         return when (value) {
             is StringConstant -> StringResolution(ResolutionStatus.KNOWN, value.value)
             is NullConstant -> StringResolution(ResolutionStatus.NULL_VALUE, null)
+            is FieldRef -> resolveStringField(value)
             is Local -> {
                 val defs = localDefs.getDefsOfAt(value, atStmt)
                 if (defs.isEmpty()) {
@@ -54,6 +60,7 @@ class MethodLocalResolver(private val body: Body) {
         return when (value) {
             is IntConstant -> IntResolution(ResolutionStatus.KNOWN, value.value)
             is NullConstant -> IntResolution(ResolutionStatus.NULL_VALUE, null)
+            is FieldRef -> resolveIntField(value)
             is Local -> {
                 val defs = localDefs.getDefsOfAt(value, atStmt)
                 if (defs.isEmpty()) {
@@ -113,7 +120,10 @@ class MethodLocalResolver(private val body: Body) {
     private fun resolveActionsFromDef(local: Local, defStmt: AssignStmt, atStmt: Stmt, seen: MutableSet<Pair<Value, Stmt>>): ActionResolution {
         val right = defStmt.rightOp
         if (right is Local) {
-            return resolveActions(right, defStmt, seen)
+            return resolveActions(right, atStmt, seen)
+        }
+        if (right is CastExpr && right.op is Local) {
+            return resolveActions(right.op, atStmt, seen)
         }
         if (right is NullConstant) {
             return ActionResolution(ResolutionStatus.NULL_VALUE, emptySet())
@@ -128,17 +138,23 @@ class MethodLocalResolver(private val body: Body) {
         val startIndex = unitIndex[startStmt] ?: return ActionResolution(ResolutionStatus.UNKNOWN, emptySet())
         val endIndex = unitIndex[endStmt] ?: return ActionResolution(ResolutionStatus.UNKNOWN, emptySet())
         val actions = linkedSetOf<String>()
+        val aliases = linkedSetOf<Local>()
+        aliases += local
 
         for (index in startIndex + 1 until endIndex) {
             val stmt = units[index] as? Stmt ?: continue
-            if (stmt is AssignStmt && stmt.leftOp == local) {
-                break
+            if (stmt is AssignStmt) {
+                updateAliases(stmt, aliases)
             }
             if (!stmt.containsInvokeExpr()) {
                 continue
             }
             val invokeExpr = stmt.invokeExpr
-            if (invokeExpr !is InstanceInvokeExpr || invokeExpr.base != local) {
+            if (invokeExpr !is InstanceInvokeExpr) {
+                continue
+            }
+            val baseLocal = invokeExpr.base as? Local
+            if (baseLocal == null || baseLocal !in aliases) {
                 continue
             }
             val signature = invokeExpr.methodRef.signature
@@ -166,6 +182,60 @@ class MethodLocalResolver(private val body: Body) {
         } else {
             ActionResolution(ResolutionStatus.KNOWN, actions)
         }
+    }
+
+    private fun updateAliases(stmt: AssignStmt, aliases: MutableSet<Local>) {
+        val leftLocal = stmt.leftOp as? Local ?: return
+        val rightLocal = extractLocal(stmt.rightOp)
+        if (rightLocal != null && rightLocal in aliases) {
+            aliases += leftLocal
+            return
+        }
+        if (leftLocal in aliases && rightLocal != null && rightLocal !in aliases) {
+            aliases -= leftLocal
+        }
+    }
+
+    private fun extractLocal(value: Value): Local? {
+        return when (value) {
+            is Local -> value
+            is CastExpr -> value.op as? Local
+            else -> null
+        }
+    }
+
+    private fun resolveStringField(value: FieldRef): StringResolution {
+        val constant = extractStringConstant(value.fieldRef.resolve())
+        return if (constant != null) {
+            StringResolution(ResolutionStatus.KNOWN, constant)
+        } else {
+            StringResolution(ResolutionStatus.UNKNOWN, null)
+        }
+    }
+
+    private fun resolveIntField(value: FieldRef): IntResolution {
+        val constant = extractIntConstant(value.fieldRef.resolve())
+        return if (constant != null) {
+            IntResolution(ResolutionStatus.KNOWN, constant)
+        } else {
+            IntResolution(ResolutionStatus.UNKNOWN, null)
+        }
+    }
+
+    private fun extractStringConstant(field: SootField): String? {
+        if (!field.isStatic || !field.isFinal) {
+            return null
+        }
+        val tag = field.tags.firstOrNull { it is StringConstantValueTag } as? StringConstantValueTag
+        return tag?.stringValue
+    }
+
+    private fun extractIntConstant(field: SootField): Int? {
+        if (!field.isStatic || !field.isFinal) {
+            return null
+        }
+        val tag = field.tags.firstOrNull { it is IntegerConstantValueTag } as? IntegerConstantValueTag
+        return tag?.intValue
     }
 
     private fun mergeStringResults(results: List<StringResolution>): StringResolution {
