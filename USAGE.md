@@ -4,9 +4,9 @@
 
 这个工具用于扫描 `framework jar` 目录中的动态广播注册点，最终输出**危险广播列表**。
 
-当前版本默认只分析类名以 `com.huawei.` 开头的类，`android.*`、`com.android.*` 以及其他非 `com.huawei.*` 类都会跳过。
+当前版本默认会扫描所有类中的动态广播注册点。
 
-如果你怀疑默认过滤过严，可以加 `--scan-all-receivers`，放开到扫描所有类中的动态注册点。
+如果你只想筛选某个包前缀，比如只看 `com.huawei.*`，可以加 `--package-prefix com.huawei`。
 
 工具内部会按以下规则过滤：
 
@@ -44,7 +44,8 @@
 说明：
 
 - 当前版本会递归搜索子目录中的 `.jar`
-- 但真正进入分析的类只限 `com.huawei.*`
+- 默认会扫描 jar 中的所有类
+- 如果传 `--package-prefix`，则只扫描匹配该前缀的类
 
 ### 2.2 proaction.xml
 
@@ -112,13 +113,16 @@ java -jar framework-broadcast-scanner-all.jar \
   - 可选
   - 输出目录
   - 不传时默认使用当前目录下的 `out`
+- `--package-prefix`
+  - 可选
+  - 只扫描类名以这个前缀开头的类
+  - 例如：`--package-prefix com.huawei`
 - `--scan-all-receivers`
   - 可选
-  - 开启后不再只限制 `com.huawei.*`
-  - 可以直接写成 `--scan-all-receivers`
-  - 也可以显式写成 `--scan-all-receivers true`
+  - 兼容旧参数
+  - 当前默认已经是扫描全部 receiver，通常不需要再传
 
-如果要扫描所有 receiver，可这样运行：
+如果只想扫描 `com.huawei.*`，可这样运行：
 
 ```bash
 java -jar framework-broadcast-scanner-all.jar \
@@ -126,7 +130,7 @@ java -jar framework-broadcast-scanner-all.jar \
   --protected-broadcasts /path/to/proaction.xml \
   --permissions /path/to/permission.txt \
   --out-dir /path/to/out \
-  --scan-all-receivers
+  --package-prefix com.huawei
 ```
 
 如果只想查看帮助：
