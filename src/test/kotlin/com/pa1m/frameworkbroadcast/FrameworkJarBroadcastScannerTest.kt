@@ -50,9 +50,29 @@ class FrameworkJarBroadcastScannerTest {
         val actions = ProtectedBroadcastParser.parse(protectedXml)
         val permissionMap = PermissionDefinitionsParser.parse(permissions)
 
-        assertTrue("android.intent.action.BOOT_COMPLETED" in actions)
+        assertTrue(actions.matches("android.intent.action.BOOT_COMPLETED"))
         assertEquals(false, permissionMap.getValue("android.permission.NORMAL_PERMISSION").highProtection)
         assertEquals(true, permissionMap.getValue("android.permission.SIGNATURE_ONLY").highProtection)
+    }
+
+    @Test
+    fun `protected broadcast parser supports plain action list with wildcard prefix and trims spaces`() {
+        val dir = Files.createTempDirectory("broadcast-parser-plain")
+        val protectedList = dir.resolve("package_dump.txt")
+        Files.writeString(
+            protectedList,
+            """
+              android.intent.action.BOOT_COMPLETED  
+              com.huawei.hwid.*   
+            """.trimIndent()
+        )
+
+        val matcher = ProtectedBroadcastParser.parse(protectedList)
+
+        assertTrue(matcher.matches("android.intent.action.BOOT_COMPLETED"))
+        assertTrue(matcher.matches("com.huawei.hwid.LOGIN"))
+        assertTrue(matcher.matches("com.huawei.hwid.abc.def"))
+        assertFalse(matcher.matches("com.huawei.hwidd.LOGIN"))
     }
 
     @Test
@@ -70,7 +90,10 @@ class FrameworkJarBroadcastScannerTest {
         )
         val record = DangerousBroadcastFilter.filter(
             fact,
-            protectedBroadcasts = setOf("android.intent.action.BOOT_COMPLETED"),
+            protectedBroadcasts = ProtectedBroadcastMatcher(
+                exactActions = setOf("android.intent.action.BOOT_COMPLETED"),
+                prefixActions = emptySet(),
+            ),
             permissions = mapOf(
                 "android.permission.NORMAL_PERMISSION" to PermissionMeta(
                     "android.permission.NORMAL_PERMISSION",
@@ -1247,7 +1270,7 @@ class FrameworkJarBroadcastScannerTest {
             override fun scanSingleArtifact(
                 artifact: ScanArtifact,
                 environment: ScanEnvironment,
-                protectedBroadcasts: Set<String>,
+                protectedBroadcasts: ProtectedBroadcastMatcher,
                 permissions: Map<String, PermissionMeta>,
             ): JarScanResult {
                 return when (Path.of(artifact.path).fileName.toString()) {
@@ -1288,7 +1311,7 @@ class FrameworkJarBroadcastScannerTest {
         val result = scanner.scan(
             inputPath = jarDir,
             inputType = InputTypeMode.CLASS_JAR,
-            protectedBroadcasts = emptySet(),
+            protectedBroadcasts = ProtectedBroadcastMatcher(emptySet(), emptySet()),
             permissions = emptyMap(),
         )
 

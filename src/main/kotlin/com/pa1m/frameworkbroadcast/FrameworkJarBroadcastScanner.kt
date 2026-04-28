@@ -17,7 +17,7 @@ open class FrameworkJarBroadcastScanner(
 ) {
     fun scan(
         jarDir: Path,
-        protectedBroadcasts: Set<String>,
+        protectedBroadcasts: ProtectedBroadcastMatcher,
         permissions: Map<String, PermissionMeta>,
     ): ScanResult {
         return scan(
@@ -32,7 +32,7 @@ open class FrameworkJarBroadcastScanner(
     fun scan(
         inputPath: Path,
         inputType: InputTypeMode,
-        protectedBroadcasts: Set<String>,
+        protectedBroadcasts: ProtectedBroadcastMatcher,
         permissions: Map<String, PermissionMeta>,
         androidPlatforms: Path? = null,
     ): ScanResult {
@@ -60,7 +60,7 @@ open class FrameworkJarBroadcastScanner(
 
     fun scanSingleArtifact(
         artifact: ScanArtifact,
-        protectedBroadcasts: Set<String>,
+        protectedBroadcasts: ProtectedBroadcastMatcher,
         permissions: Map<String, PermissionMeta>,
         androidPlatforms: Path? = null,
     ): JarScanResult {
@@ -71,7 +71,7 @@ open class FrameworkJarBroadcastScanner(
     protected open fun scanSingleArtifact(
         artifact: ScanArtifact,
         environment: ScanEnvironment,
-        protectedBroadcasts: Set<String>,
+        protectedBroadcasts: ProtectedBroadcastMatcher,
         permissions: Map<String, PermissionMeta>,
     ): JarScanResult {
         val dangerousRecords = mutableListOf<DangerousBroadcastRecord>()

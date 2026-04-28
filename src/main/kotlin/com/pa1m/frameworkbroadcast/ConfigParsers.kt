@@ -3,15 +3,55 @@ package com.pa1m.frameworkbroadcast
 import java.nio.file.Files
 import java.nio.file.Path
 
+data class ProtectedBroadcastMatcher(
+    val exactActions: Set<String>,
+    val prefixActions: Set<String>,
+) {
+    fun matches(action: String): Boolean {
+        if (action in exactActions) {
+            return true
+        }
+        return prefixActions.any { action.startsWith(it) }
+    }
+}
+
 object ProtectedBroadcastParser {
     private val actionRegex = Regex("""android:name\s*=\s*"([^"]+)"""")
 
-    fun parse(path: Path): Set<String> {
+    fun parse(path: Path): ProtectedBroadcastMatcher {
         val content = Files.readString(path)
-        return actionRegex.findAll(content)
+        val xmlActions = actionRegex.findAll(content)
             .map { it.groupValues[1].trim() }
             .filter { it.isNotEmpty() }
-            .toSet()
+            .toList()
+
+        val plainTextActions = if (xmlActions.isEmpty()) {
+            content.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .filterNot { it.startsWith("#") }
+                .toList()
+        } else {
+            emptyList()
+        }
+
+        val exactActions = linkedSetOf<String>()
+        val prefixActions = linkedSetOf<String>()
+        (xmlActions + plainTextActions).forEach { action ->
+            val normalized = action.trim()
+            if (normalized.isEmpty()) {
+                return@forEach
+            }
+            if (normalized.endsWith("*")) {
+                prefixActions += normalized.removeSuffix("*").trim()
+            } else {
+                exactActions += normalized
+            }
+        }
+        return ProtectedBroadcastMatcher(
+            exactActions = exactActions,
+            prefixActions = prefixActions,
+        )
     }
 }
 
@@ -65,7 +105,7 @@ object PermissionDefinitionsParser {
 object DangerousBroadcastFilter {
     fun filter(
         fact: BroadcastScanFact,
-        protectedBroadcasts: Set<String>,
+        protectedBroadcasts: ProtectedBroadcastMatcher,
         permissions: Map<String, PermissionMeta>,
     ): DangerousBroadcastRecord? {
         if (fact.isNotExported) {
@@ -73,7 +113,7 @@ object DangerousBroadcastFilter {
         }
         val permissionMeta = fact.broadcastPermission?.let { permissions[it] }
         val allActionsProtected = fact.intentFilterActions.isNotEmpty() &&
-            fact.intentFilterActions.all { it in protectedBroadcasts }
+            fact.intentFilterActions.all { protectedBroadcasts.matches(it) }
         if (allActionsProtected) {
             return null
         }
