@@ -1,0 +1,12 @@
+All Permissions:
+
++ permission:android.permission.NFC_PREFERRED_PAYMENT_INFO
+  package:android
+  label:首选 NFC 付款服务信息
+  description:允许应用获取首选 NFC 付款服务信息，例如注册的应用标识符和路线目的地。
+  protectionLevel:normal
++ permission:android.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS
+  package:android
+  label:null
+  description:null
+  protectionLevel:signature|role
