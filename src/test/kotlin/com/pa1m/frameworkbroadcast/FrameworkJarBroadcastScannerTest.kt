@@ -588,6 +588,289 @@ class FrameworkJarBroadcastScannerTest {
     }
 
     @Test
+    fun `scanner resolves actions and permission from final instance string fields`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-instance-fields")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/InstanceFieldRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class InstanceFieldRegister {
+                    public final String ACTION_FOO = "com.test.INSTANCE_FIELD_ACTION";
+                    public final String NORMAL_PERMISSION = "android.permission.NORMAL_PERMISSION";
+                    private final Context context = new DummyContext();
+                    public void fromInstanceFields() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter();
+                        filter.addAction(this.ACTION_FOO);
+                        context.registerReceiver(receiver, filter, this.NORMAL_PERMISSION, null);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("instance-fields.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(
+            permissionTxt,
+            """
+            All Permissions:
+            + permission:android.permission.NORMAL_PERMISSION
+              protectionLevel:normal
+            """.trimIndent()
+        )
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(listOf("com.test.INSTANCE_FIELD_ACTION"), result.dangerousRecords.single().actionList)
+        assertEquals("android.permission.NORMAL_PERMISSION", result.dangerousRecords.single().broadcastPermission)
+        assertEquals("normal", result.dangerousRecords.single().permissionProtectionLevel)
+        G.reset()
+    }
+
+    @Test
+    fun `scanner resolves actions and permission from zero arg string helper methods`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-helper-methods")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/os/Handler.java" to """
+                package android.os;
+                public class Handler {}
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                import android.os.Handler;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String permission, Handler scheduler) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/ActionDefs.java" to """
+                package com.huawei.sample;
+                public class ActionDefs {
+                    public static String customAction() {
+                        return "com.test.HELPER_ACTION";
+                    }
+                    public static String normalPermission() {
+                        String value = "android.permission.NORMAL_PERMISSION";
+                        return value;
+                    }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/HelperMethodRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class HelperMethodRegister {
+                    private final Context context = new DummyContext();
+                    public void fromHelperMethods() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter filter = new IntentFilter(ActionDefs.customAction());
+                        context.registerReceiver(receiver, filter, ActionDefs.normalPermission(), null);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("helper-methods.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(
+            permissionTxt,
+            """
+            All Permissions:
+            + permission:android.permission.NORMAL_PERMISSION
+              protectionLevel:normal
+            """.trimIndent()
+        )
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(1, result.dangerousRecords.size)
+        assertEquals(listOf("com.test.HELPER_ACTION"), result.dangerousRecords.single().actionList)
+        assertEquals("android.permission.NORMAL_PERMISSION", result.dangerousRecords.single().broadcastPermission)
+        assertEquals("normal", result.dangerousRecords.single().permissionProtectionLevel)
+        G.reset()
+    }
+
+    @Test
+    fun `scanner resolves actions from this filter field and local alias`() {
+        val tempDir = Files.createTempDirectory("framework-broadcast-filter-field")
+        val jarDir = tempDir.resolve("jars")
+        Files.createDirectories(jarDir)
+        val classesDir = tempDir.resolve("classes")
+        Files.createDirectories(classesDir)
+
+        val sources = mapOf(
+            "android/content/BroadcastReceiver.java" to """
+                package android.content;
+                public abstract class BroadcastReceiver {}
+            """.trimIndent(),
+            "android/content/Intent.java" to """
+                package android.content;
+                public class Intent {}
+            """.trimIndent(),
+            "android/content/IntentFilter.java" to """
+                package android.content;
+                public class IntentFilter {
+                    public IntentFilter() {}
+                    public IntentFilter(String action) {}
+                    public void addAction(String action) {}
+                }
+            """.trimIndent(),
+            "android/content/Context.java" to """
+                package android.content;
+                public abstract class Context {
+                    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) { return null; }
+                }
+            """.trimIndent(),
+            "com/huawei/sample/SampleReceiver.java" to """
+                package com.huawei.sample;
+                import android.content.BroadcastReceiver;
+                public class SampleReceiver extends BroadcastReceiver {}
+            """.trimIndent(),
+            "com/huawei/sample/DummyContext.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                public class DummyContext extends Context {}
+            """.trimIndent(),
+            "com/huawei/sample/FieldFilterRegister.java" to """
+                package com.huawei.sample;
+                import android.content.Context;
+                import android.content.IntentFilter;
+                public class FieldFilterRegister {
+                    private final Context context = new DummyContext();
+                    private final IntentFilter filter = new IntentFilter();
+                    public void directField() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        this.filter.addAction("com.test.FIELD_DIRECT");
+                        context.registerReceiver(receiver, this.filter);
+                    }
+                    public void aliasField() {
+                        SampleReceiver receiver = new SampleReceiver();
+                        IntentFilter alias = this.filter;
+                        alias.addAction("com.test.FIELD_ALIAS");
+                        context.registerReceiver(receiver, alias);
+                    }
+                }
+            """.trimIndent(),
+        )
+
+        compileJavaSources(sources, classesDir)
+        createJarFromClasses(classesDir, jarDir.resolve("field-filter.jar"))
+
+        val protectedXml = tempDir.resolve("proaction.xml")
+        Files.writeString(protectedXml, """<protected-broadcast android:name="android.intent.action.BOOT_COMPLETED" />""")
+        val permissionTxt = tempDir.resolve("permission.txt")
+        Files.writeString(permissionTxt, "All Permissions:\n")
+
+        val result = FrameworkJarBroadcastScanner(packagePrefix = "com.huawei.").scan(
+            jarDir,
+            ProtectedBroadcastParser.parse(protectedXml),
+            PermissionDefinitionsParser.parse(permissionTxt),
+        )
+
+        assertEquals(2, result.dangerousRecords.size)
+        val byMethod = result.dangerousRecords.associateBy { it.declaringMethod }
+        assertEquals(
+            listOf("com.test.FIELD_DIRECT"),
+            byMethod.getValue("<com.huawei.sample.FieldFilterRegister: void directField()>").actionList
+        )
+        assertEquals(
+            listOf("com.test.FIELD_ALIAS"),
+            byMethod.getValue("<com.huawei.sample.FieldFilterRegister: void aliasField()>").actionList
+        )
+        G.reset()
+    }
+
+    @Test
     fun `scanner finds jars recursively in nested directories`() {
         val tempDir = Files.createTempDirectory("framework-broadcast-recursive")
         val jarDir = tempDir.resolve("jars")
