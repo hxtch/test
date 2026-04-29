@@ -117,6 +117,9 @@ object DangerousBroadcastFilter {
         if (allActionsProtected) {
             return null
         }
+        val customActions = fact.intentFilterActions
+            .filterNot { protectedBroadcasts.matches(it) }
+            .sorted()
         if (permissionMeta?.highProtection == true) {
             return null
         }
@@ -125,7 +128,7 @@ object DangerousBroadcastFilter {
             declaringClass = fact.declaringClass,
             declaringMethod = fact.declaringMethod,
             sourceLine = fact.sourceLine,
-            actionList = fact.intentFilterActions.sorted(),
+            actionList = customActions,
             broadcastPermission = fact.broadcastPermission,
             permissionProtectionLevel = permissionMeta?.protectionLevelRaw,
             evidence = fact.evidence,

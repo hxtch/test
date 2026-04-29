@@ -104,7 +104,7 @@ class FrameworkJarBroadcastScannerTest {
             )
         )
         requireNotNull(record)
-        assertEquals(listOf("android.intent.action.BOOT_COMPLETED", "com.test.CUSTOM"), record.actionList)
+        assertEquals(listOf("com.test.CUSTOM"), record.actionList)
         assertEquals("normal", record.permissionProtectionLevel)
     }
 
@@ -234,7 +234,7 @@ class FrameworkJarBroadcastScannerTest {
         assertNull(byMethod.getValue("legacyNoPermission").permissionProtectionLevel)
         assertEquals("normal", byMethod.getValue("mixedActionNeedsPermissionCheck").permissionProtectionLevel)
         assertEquals(
-            listOf("android.intent.action.BOOT_COMPLETED", "com.test.CUSTOM_MIXED"),
+            listOf("com.test.CUSTOM_MIXED"),
             byMethod.getValue("mixedActionNeedsPermissionCheck").actionList
         )
         assertTrue(records.all { it.declaringClass.startsWith("com.huawei.") })
