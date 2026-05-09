@@ -1,0 +1,121 @@
+interface:
+  display_name: "Dynamic Broadcast LLM Review Orchestrator"
+  short_description: "Review risky dynamic broadcast findings with action tracing, custom-branch-only onReceive analysis, and main-agent aggregation."
+  version: "1.0.0"
+  author: "android-security-team"
+
+input:
+  - name: findings
+    type: file
+    description: "Path to dangerous_dynamic_broadcasts.jsonl"
+    required: true
+  - name: reverse_root
+    type: directory
+    description: "Path to decompiled source root"
+    required: true
+  - name: out_dir
+    type: directory
+    description: "Output review directory"
+    required: true
+  - name: system_broadcast_file
+    type: file
+    description: "Path to system/protected broadcast file"
+    required: true
+
+output:
+  - name: reviewed-findings.json
+    type: file
+    description: "Consolidated review results"
+  - name: final-review-report.md
+    type: file
+    description: "Final Chinese vulnerability report"
+  - name: coverage-summary.json
+    type: file
+    description: "Coverage statistics"
+
+parameters:
+  - name: trace_max_hops
+    type: integer
+    default: 3
+    description: "Max hops for action tracing"
+  - name: onreceive_max_hops
+    type: integer
+    default: 3
+    description: "Max hops for onReceive dataflow tracing"
+  - name: batch_size
+    type: integer
+    default: 4
+    description: "Max findings per batch"
+  - name: max_concurrent_batches
+    type: integer
+    default: 5
+    description: "Max concurrent subagent batches per wave"
+
+agents:
+  - role: main_agent
+    description: "Reads input, builds app index, partitions batches, dispatches subagents in waves, validates results, and produces final report"
+    responsibilities:
+      - "Input validation and summary generation"
+      - "App index construction"
+      - "Batch partitioning with wave scheduling"
+      - "Subagent dispatch and result collection"
+      - "Structure and evidence validation"
+      - "Final report aggregation"
+  - role: subagent
+    description: "Performs per-batch source analysis: action tracing, onReceive branch identification, dataflow tracking, and evidence generation"
+    responsibilities:
+      - "Source code localization within resolved_app_root"
+      - "Action list completion and system broadcast filtering"
+      - "Custom action branch matching in onReceive"
+      - "Dataflow tracking to sinks and guards"
+      - "Intermediate result file generation"
+    constraints:
+      - "Max 10 findings per subagent"
+      - "Must not perform global grep outside resolved_app_root"
+      - "Must not rebuild app index"
+      - "Must output both JSON and Markdown intermediate files"
+
+workflow:
+  phases:
+    - name: "scan"
+      description: "Run framework-broadcast-scanner if input is APK/JAR/directory"
+      optional: true
+    - name: "input_validation"
+      description: "Read and validate finding records, generate input-summary.json"
+    - name: "app_indexing"
+      description: "Build app-index.json with manifest-backed or source-only mode"
+    - name: "batch_partitioning"
+      description: "Partition findings into batches with wave scheduling"
+    - name: "subagent_analysis"
+      description: "Dispatch subagents in waves, collect intermediate results"
+    - name: "validation"
+      description: "Validate batch results, trigger remediation if needed"
+    - name: "aggregation"
+      description: "Aggregate final report with coverage statistics"
+
+assets:
+  scripts:
+    - build_review_batches.py
+    - validate_review_batch.py
+    - finalize_review_report.py
+    - review_common.py
+  templates:
+    - subagent-batch-template.md
+    - remediation-template.md
+    - final-review-template.md
+  vendor:
+    - framework-broadcast-scanner/framework-broadcast-scanner-all.jar
+    - jadx/dist/bin/jadx
+  references:
+    - protected-broadcasts.txt
+    - permissions.txt
+
+constraints:
+  - "Do not grep declaring_class across entire reverse-root"
+  - "Do not read entire system-broadcast-file into memory"
+  - "Do not skip audit due to missing AndroidManifest.xml"
+  - "Do not close finding due to normal permission level"
+  - "Do not analyze pure system broadcast branches"
+  - "Subagent must write intermediate files before returning"
+  - "Wave-based execution: max 5 concurrent batches per wave"
+  - "Max 10 findings per subagent batch"

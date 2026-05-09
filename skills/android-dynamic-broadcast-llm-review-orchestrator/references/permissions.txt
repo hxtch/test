@@ -1,0 +1,25 @@
+# Default baseline. Replace this file with:
+#   adb shell pm list permissions -f > references/permissions.txt
+#
+# The parser expects `pm permissions -f` style records.
+# This bundled baseline is intentionally small and should be refreshed for new product shapes.
+
+permission:android.permission.BROADCAST_STICKY
+  package: android
+  protectionLevel: normal
+
+permission:android.permission.RECEIVE_BOOT_COMPLETED
+  package: android
+  protectionLevel: normal
+
+permission:android.permission.DUMP
+  package: android
+  protectionLevel: signature|privileged
+
+permission:android.permission.MASTER_CLEAR
+  package: android
+  protectionLevel: signature|privileged
+
+permission:android.permission.MANAGE_USERS
+  package: android
+  protectionLevel: signature|privileged
